@@ -11,7 +11,7 @@ const { parseTypeformResponse } = require('./typeform-parser');
 const { calculateScores } = require('./scoring');
 const { generateReport } = require('./claude-service');
 const { createHTMLReport } = require('./report-generator');
-
+let lastReport = null;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -68,6 +68,8 @@ app.post('/webhook/typeform', async (req, res) => {
         // Create HTML report
         console.log('Creating HTML report...');
         const htmlReport = createHTMLReport(reportContent, scores);
+        // Store for temporary viewing
+        lastReport = htmlReport;
         
         // For now, we'll return the report directly
         // In production, you might want to:
@@ -125,6 +127,15 @@ function verifyTypeformSignature(payload, signature) {
     return `sha256=${hash}` === signature;
 }
 
+// Temporary: View last report
+app.get('/last-report', (req, res) => {
+    if (lastReport) {
+        res.send(lastReport);
+    } else {
+        res.send('No report generated yet');
+    }
+});
+
 // Start server
 app.listen(PORT, () => {
     console.log(`✅ Exit Readiness Backend running on port ${PORT}`);
@@ -143,3 +154,7 @@ process.on('SIGTERM', () => {
         console.log('HTTP server closed');
     });
 });
+
+
+
+
