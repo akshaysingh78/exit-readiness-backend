@@ -42,15 +42,15 @@ app.post('/webhook/typeform', async (req, res) => {
     
     try {
         // Verify webhook signature (optional but recommended)
-        if (process.env.TYPEFORM_WEBHOOK_SECRET) {
-            const signature = req.headers['typeform-signature'];
-            const isValid = verifyTypeformSignature(req.body, signature);
-            
-            if (!isValid) {
-                console.error('Invalid webhook signature');
-                return res.status(401).json({ error: 'Invalid signature' });
-            }
-        }
+    //    if (process.env.TYPEFORM_WEBHOOK_SECRET) {
+    //        const signature = req.headers['typeform-signature'];
+    //        const isValid = verifyTypeformSignature(req.body, signature);
+    //        
+    //        if (!isValid) {
+    //            console.error('Invalid webhook signature');
+    //            return res.status(401).json({ error: 'Invalid signature' });
+    //        }
+    //    }
         
         // Parse Typeform response
         console.log('Parsing Typeform response...');
