@@ -84,7 +84,7 @@ app.post('/webhook/typeform', async (req, res) => {
         lastReport = htmlReport;
         
         // Store the report with a unique ID
-        const reportId = answers._metadata?.response_id || generateReportId();
+        const reportId = req.body.form_response.token || answers._metadata?.response_id || generateReportId();
         reports.set(reportId, {
             html: htmlReport,
             scores: scores,

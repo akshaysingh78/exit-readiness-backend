@@ -47,8 +47,9 @@ function parseTypeformResponse(webhookData) {
     // Add metadata
     answers._metadata = {
         submitted_at: formResponse.submitted_at,
-        response_id: formResponse.response_id,
-        form_id: formResponse.form_id
+        response_id: formResponse.token,
+        form_id: formResponse.form_id,
+        token: formResponse.token
     };
     
     return answers;
