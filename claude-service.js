@@ -14,7 +14,7 @@ async function generateReport(scores, answers) {
         console.log('Calling Claude API...');
         
         const message = await anthropic.messages.create({
-            model: 'claude-3-opus-20240229', // or claude-3-sonnet for lower cost
+            model: 'claude-3-5-sonnet-20241022', // or claude-3-sonnet for lower cost
             max_tokens: 4000,
             temperature: 0.7,
             messages: [{
