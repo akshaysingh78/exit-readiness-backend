@@ -14,23 +14,20 @@ class PDFGenerator {
     async init() {
         if (!this.browser) {
             try {
-                console.log('Initializing Puppeteer browser with bundled Chromium...');
-            
+                console.log('Initializing Puppeteer browser...');
+                
                 this.browser = await puppeteer.launch({
                     headless: 'new',
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
                         '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--single-process'
+                        '--disable-gpu'
                     ]
                 });
-            
-                console.log('✅ Bundled Chromium browser launched successfully!');
-            
+                
+                console.log('✅ Browser launched successfully!');
+                
             } catch (error) {
                 console.error('Browser initialization failed:', error);
                 throw new Error(`Failed to initialize browser: ${error.message}`);
