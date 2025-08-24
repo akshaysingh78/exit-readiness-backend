@@ -11,7 +11,7 @@ require('dotenv').config();
 const { parseTypeformResponse } = require('./typeform-parser');
 const { calculateScores } = require('./scoring');
 const { generateReport, generateClaudePrompt } = require('./claude-service');
-const { createHTMLReport } = require('./report-generator');
+const { createHTMLReport, createEnhancedHTMLReport } = require('./report-generator');
 
 // Store reports temporarily (in production, use a database)
 const reports = new Map();
@@ -79,40 +79,32 @@ app.post('/webhook/typeform', async (req, res) => {
         const prompt = generateClaudePrompt(parsedData, scores);
         const reportContent = await generateReport(prompt);
         
-        // Create HTML report
-        console.log('Creating HTML report...');
-        const htmlReport = createHTMLReport(reportContent, scores);
+        // Create enhanced HTML report
+        console.log('Creating enhanced HTML report...');
+        const htmlReport = createEnhancedHTMLReport(reportContent, scores);
         
-        // Generate PDF
-        console.log('Generating PDF...');
-        const pdfOptimizedHTML = pdfGenerator.getPDFOptimizedHTML(reportContent, scores);
-        const pdfBuffer = await pdfGenerator.generatePDF(pdfOptimizedHTML, {
-            companyName: 'Founders Wealth Group'
-        });
-        
-        // Store both HTML and PDF reports
+        // Store HTML report (skip PDF for now)
         const reportId = generateReportId();
         const timestamp = new Date().toISOString();
         
-        // Store in memory (you can add database later)
+        // Store in memory
         global.reports = global.reports || {};
         global.reports[reportId] = {
             htmlReport,
-            pdfBuffer,
             scores,
             timestamp,
             parsedData
         };
         
-        console.log(`✅ Report generated successfully! ID: ${reportId}`);
+        console.log(`✅ Enhanced HTML report generated successfully! ID: ${reportId}`);
         
         // Return success with report links
         res.json({ 
             success: true,
             reportId: reportId,
             htmlUrl: `/report/${reportId}`,
-            pdfUrl: `/report/${reportId}/pdf`,
-            timestamp: timestamp
+            timestamp: timestamp,
+            message: 'Enhanced report generated successfully'
         });
         
     } catch (error) {
@@ -121,7 +113,7 @@ app.post('/webhook/typeform', async (req, res) => {
             error: 'Internal server error',
             message: error.message 
         });
-    }
+    }     
 });
 
 // Waiting room for new submissions
