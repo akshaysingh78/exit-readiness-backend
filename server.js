@@ -2,6 +2,7 @@
 // Main server file - handles webhooks from Typeform
 
 const express = require('express');
+const PDFGenerator = require('./pdf-generator');
 const cors = require('cors');
 const crypto = require('crypto');
 require('dotenv').config();
@@ -9,7 +10,7 @@ require('dotenv').config();
 // Import our modules
 const { parseTypeformResponse } = require('./typeform-parser');
 const { calculateScores } = require('./scoring');
-const { generateReport } = require('./claude-service');
+const { generateReport, generateClaudePrompt } = require('./claude-service');
 const { createHTMLReport } = require('./report-generator');
 
 // Store reports temporarily (in production, use a database)
@@ -21,6 +22,7 @@ const sessions = new Map();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const pdfGenerator = new PDFGenerator();
 
 // Middleware
 app.use(cors());
@@ -29,7 +31,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Helper function to generate simple IDs
 function generateReportId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const timestamp = Date.now().toString(36);
+    const randomStr = Math.random().toString(36).substr(2, 9);
+    return `${timestamp}-${randomStr}`;
 }
 
 // Generate session ID
@@ -58,73 +62,63 @@ app.get('/health', (req, res) => {
 
 // Main webhook endpoint for Typeform
 app.post('/webhook/typeform', async (req, res) => {
-    console.log('Received webhook from Typeform');
-    
     try {
+        console.log('Received webhook from Typeform');
+        
         // Parse Typeform response
-        console.log('Parsing Typeform response...');
-        const answers = parseTypeformResponse(req.body);
+        const parsedData = parseTypeformResponse(req.body);
+        console.log('Parsed data:', JSON.stringify(parsedData, null, 2));
         
         // Calculate scores
         console.log('Calculating scores...');
-        const scores = calculateScores(answers);
+        const scores = calculateScores(parsedData);
         console.log('Scores calculated:', scores);
         
-        // Generate report with Claude
-        console.log('Generating report with Claude...');
-        const reportContent = await generateReport(scores, answers);
+        // Generate Claude report
+        console.log('Generating Claude report...');
+        const prompt = generateClaudePrompt(parsedData, scores);
+        const reportContent = await generateReport(prompt);
         
         // Create HTML report
         console.log('Creating HTML report...');
         const htmlReport = createHTMLReport(reportContent, scores);
         
-        // Store for temporary viewing (backward compatibility)
-        lastReport = htmlReport;
-        
-        // Store the report with a unique ID
-        const reportId = req.body.form_response?.token || generateReportId();
-        reports.set(reportId, {
-            html: htmlReport,
-            scores: scores,
-            timestamp: new Date(),
-            status: 'ready'
+        // Generate PDF
+        console.log('Generating PDF...');
+        const pdfOptimizedHTML = pdfGenerator.getPDFOptimizedHTML(reportContent, scores);
+        const pdfBuffer = await pdfGenerator.generatePDF(pdfOptimizedHTML, {
+            companyName: 'Founders Wealth Group'
         });
         
-        // Mark any waiting sessions as ready
-        for (const [sessionId, session] of sessions.entries()) {
-            if (session.status === 'waiting' && Date.now() - session.startTime < 60000) { // 1 minute timeout
-                session.reportId = reportId;
-                session.status = 'ready';
-            }
-        }
+        // Store both HTML and PDF reports
+        const reportId = generateReportId();
+        const timestamp = new Date().toISOString();
         
-        // Clean up old reports and sessions
-        for (const [id, report] of reports.entries()) {
-            if (Date.now() - report.timestamp > 24 * 60 * 60 * 1000) {
-                reports.delete(id);
-            }
-        }
+        // Store in memory (you can add database later)
+        global.reports = global.reports || {};
+        global.reports[reportId] = {
+            htmlReport,
+            pdfBuffer,
+            scores,
+            timestamp,
+            parsedData
+        };
         
-        for (const [id, session] of sessions.entries()) {
-            if (Date.now() - session.startTime > 60 * 60 * 1000) { // 1 hour
-                sessions.delete(id);
-            }
-        }
+        console.log(`✅ Report generated successfully! ID: ${reportId}`);
         
-        console.log(`Report stored with ID: ${reportId}`);
-        
-        res.json({
+        // Return success with report links
+        res.json({ 
             success: true,
-            message: 'Report generated successfully',
             reportId: reportId,
-            scores: scores,
-            viewUrl: `${process.env.BASE_URL || 'https://your-app.onrender.com'}/report/${reportId}`
+            htmlUrl: `/report/${reportId}`,
+            pdfUrl: `/report/${reportId}/pdf`,
+            timestamp: timestamp
         });
         
     } catch (error) {
-        console.error('Error processing webhook:', error);
+        console.error('Webhook processing error:', error);
         res.status(500).json({ 
-            error: 'Failed to process assessment',
+            error: 'Internal server error',
             message: error.message 
         });
     }
@@ -356,20 +350,21 @@ app.post('/test', async (req, res) => {
     }
 });
 
-// Route to view a specific report
+// Route to view a specific report with PDF download link
 app.get('/report/:reportId', (req, res) => {
-    const reportId = req.params.reportId;
-    
-    // Handle the broken token case
-    if (reportId === '%7B%7Btoken%7D%7D' || reportId === '{{token}}') {
-        res.redirect('/report/waiting');
-        return;
-    }
-    
-    const report = reports.get(reportId);
-    
-    if (!report) {
-        res.status(404).send(`
+    try {
+        const { reportId } = req.params;
+        
+        // Handle the broken token case
+        if (reportId === '%7B%7Btoken%7D%7D' || reportId === '{{token}}') {
+            res.redirect('/report/waiting');
+            return;
+        }
+        
+        const report = global.reports?.[reportId];
+        
+        if (!report) {
+            return res.status(404).send(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -405,9 +400,82 @@ app.get('/report/:reportId', (req, res) => {
     </div>
 </body>
 </html>
-        `);
-    } else {
-        res.send(report.html);
+            `);
+        }
+        
+        // Add PDF download link to HTML report
+        const htmlWithPDFLink = report.htmlReport.replace(
+            '</body>',
+            `
+            <div style="text-align: center; margin: 30px 0; padding: 20px; background: #f8fafc; border-radius: 8px;">
+                <h3>Download Options</h3>
+                <a href="/report/${reportId}/pdf" 
+                   style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; 
+                          text-decoration: none; border-radius: 6px; margin: 5px;">
+                    📄 Download PDF Report
+                </a>
+                <br>
+                <small style="color: #666; margin-top: 10px; display: block;">
+                    Generated on ${new Date(report.timestamp).toLocaleString()}
+                </small>
+            </div>
+            </body>`
+        );
+        
+        res.send(htmlWithPDFLink);
+        
+    } catch (error) {
+        console.error('Report view error:', error);
+        res.status(500).send('Error loading report');
+    }
+});
+
+// Download PDF report
+app.get('/report/:reportId/pdf', (req, res) => {
+    try {
+        const { reportId } = req.params;
+        const report = global.reports?.[reportId];
+        
+        if (!report) {
+            return res.status(404).send('Report not found');
+        }
+        
+        // Set PDF headers
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Exit-Readiness-Report-${reportId}.pdf"`);
+        res.setHeader('Content-Length', report.pdfBuffer.length);
+        
+        // Send PDF
+        res.send(report.pdfBuffer);
+        
+        console.log(`📄 PDF downloaded: ${reportId}`);
+        
+    } catch (error) {
+        console.error('PDF download error:', error);
+        res.status(500).send('Error downloading PDF');
+    }
+});
+
+// List all reports (for testing)
+app.get('/reports', (req, res) => {
+    try {
+        const reports = global.reports || {};
+        const reportList = Object.keys(reports).map(id => ({
+            id,
+            timestamp: reports[id].timestamp,
+            scores: reports[id].scores,
+            htmlUrl: `/report/${id}`,
+            pdfUrl: `/report/${id}/pdf`
+        }));
+        
+        res.json({
+            totalReports: reportList.length,
+            reports: reportList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        });
+        
+    } catch (error) {
+        console.error('Reports list error:', error);
+        res.status(500).json({ error: 'Error loading reports list' });
     }
 });
 
@@ -430,21 +498,51 @@ app.get('/last-report', (req, res) => {
     }
 });
 
-// Start server
+// Start server with graceful shutdown
 const server = app.listen(PORT, () => {
     console.log(`✅ Exit Readiness Backend running on port ${PORT}`);
-    console.log(`🔗 Webhook URL: https://your-domain.com/webhook/typeform`);
+    console.log(`🔗 Webhook URL: ${process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + PORT}/webhook/typeform`);
+    console.log(`📊 Reports dashboard: ${process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + PORT}/reports`);
     
     // Check for required environment variables
     if (!process.env.CLAUDE_API_KEY) {
-        console.warn('⚠️  Warning: CLAUDE_API_KEY not set in .env file');
+        console.warn('⚠️  Warning: CLAUDE_API_KEY not set');
     }
 });
 
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
+// Graceful shutdown
+process.on('SIGTERM', async () => {
     console.log('SIGTERM signal received: closing HTTP server');
+    
+    // Close PDF generator
+    try {
+        await pdfGenerator.close();
+        console.log('PDF generator closed');
+    } catch (error) {
+        console.error('Error closing PDF generator:', error);
+    }
+    
+    // Close server
     server.close(() => {
         console.log('HTTP server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing HTTP server');
+    
+    // Close PDF generator
+    try {
+        await pdfGenerator.close();
+        console.log('PDF generator closed');
+    } catch (error) {
+        console.error('Error closing PDF generator:', error);
+    }
+    
+    // Close server
+    server.close(() => {
+        console.log('HTTP server closed');
+        process.exit(0);
     });
 });
