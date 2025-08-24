@@ -6,10 +6,7 @@ const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY,
 });
 
-async function generateReport(scores, answers) {
-    // Create the prompt for Claude
-    const prompt = createReportPrompt(scores, answers);
-    
+async function generateReport(prompt) {
     try {
         console.log('Calling Claude API...');
         
@@ -32,7 +29,8 @@ async function generateReport(scores, answers) {
     }
 }
 
-function createReportPrompt(scores, answers) {
+// Generate the prompt for Claude based on assessment data
+function generateClaudePrompt(parsedData, scores) {
     const category = scores.category;
     
     return `Please generate a comprehensive Business Exit Readiness Report based on the following assessment results:
@@ -40,31 +38,31 @@ function createReportPrompt(scores, answers) {
 ASSESSMENT SCORES:
 - Overall Exit Readiness Score: ${scores.overall}/100
 - Category: ${category}
-- Owner Readiness: ${scores.sections.owner}/100
-- Business Performance: ${scores.sections.business}/100
-- Strategic Position: ${scores.sections.strategic}/100
-- Organizational Readiness: ${scores.sections.organizational}/100
-- Transaction Readiness: ${scores.sections.transaction}/100
+- Owner Readiness: ${scores.sections?.owner || 'N/A'}/100
+- Business Performance: ${scores.sections?.business || 'N/A'}/100
+- Strategic Position: ${scores.sections?.strategic || 'N/A'}/100
+- Organizational Readiness: ${scores.sections?.organizational || 'N/A'}/100
+- Transaction Readiness: ${scores.sections?.transaction || 'N/A'}/100
 
 SPECIAL FLAGS:
-${scores.flags.map(flag => `- ${flag}`).join('\n')}
+${scores.flags?.map(flag => `- ${flag}`).join('\n') || 'None'}
 
 KEY ASSESSMENT DATA:
-- Exit Timeline: ${answers.exit_timeline}
-- Emotional Readiness: ${answers.emotional_readiness}/10
-- Post-Sale Involvement: ${answers.post_sale_involvement}
-- Annual Revenue: ${answers.annual_revenue}
-- Revenue Growth: ${answers.revenue_growth}
-- EBITDA Margin: ${answers.ebitda_margin}
-- Customer Concentration: ${answers.customer_concentration}
-- Competitive Advantages: ${Array.isArray(answers.competitive_advantages) ? answers.competitive_advantages.join(', ') : 'None identified'}
-- Defensibility: ${answers.defensibility}
-- Operate Without Owner: ${answers.operate_without_owner}
-- Management Depth: ${answers.management_depth}
+- Exit Timeline: ${parsedData.exit_timeline || 'Not specified'}
+- Emotional Readiness: ${parsedData.emotional_readiness || 'N/A'}/10
+- Post-Sale Involvement: ${parsedData.post_sale_involvement || 'Not specified'}
+- Annual Revenue: ${parsedData.annual_revenue || 'Not specified'}
+- Revenue Growth: ${parsedData.revenue_growth || 'Not specified'}
+- EBITDA Margin: ${parsedData.ebitda_margin || 'Not specified'}
+- Customer Concentration: ${parsedData.customer_concentration || 'Not specified'}
+- Competitive Advantages: ${Array.isArray(parsedData.competitive_advantages) ? parsedData.competitive_advantages.join(', ') : parsedData.competitive_advantages || 'None identified'}
+- Defensibility: ${parsedData.defensibility || 'Not specified'}
+- Operate Without Owner: ${parsedData.operate_without_owner || 'Not specified'}
+- Management Depth: ${parsedData.management_depth || 'Not specified'}
 
 ADJUSTMENTS APPLIED:
-Multipliers: ${scores.adjustments.multipliers.map(m => m.name + ' (' + m.factor + 'x)').join(', ') || 'None'}
-Penalties: ${scores.adjustments.penalties.map(p => p.name + ' (' + p.factor + 'x)').join(', ') || 'None'}
+Multipliers: ${scores.adjustments?.multipliers?.map(m => m.name + ' (' + m.factor + 'x)').join(', ') || 'None'}
+Penalties: ${scores.adjustments?.penalties?.map(p => p.name + ' (' + p.factor + 'x)').join(', ') || 'None'}
 
 Please create a detailed report with the following sections:
 
@@ -119,6 +117,13 @@ Please create a detailed report with the following sections:
 Please write in a professional but accessible tone, avoiding jargon where possible. Be specific and actionable rather than generic. Focus on insights that are directly relevant to their scores and situation.`;
 }
 
+// Legacy function for backward compatibility
+function createReportPrompt(scores, answers) {
+    return generateClaudePrompt(answers, scores);
+}
+
 module.exports = {
-    generateReport
+    generateReport,
+    generateClaudePrompt,
+    createReportPrompt
 };
