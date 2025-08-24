@@ -14,9 +14,9 @@ class PDFGenerator {
     async init() {
         if (!this.browser) {
             try {
-                console.log('Initializing Puppeteer browser...');
-                
-                const launchOptions = {
+                console.log('Initializing Puppeteer browser with bundled Chromium...');
+            
+                this.browser = await puppeteer.launch({
                     headless: 'new',
                     args: [
                         '--no-sandbox',
@@ -25,54 +25,12 @@ class PDFGenerator {
                         '--disable-gpu',
                         '--no-first-run',
                         '--no-zygote',
-                        '--single-process',
-                        '--disable-features=VizDisplayCompositor',
-                        '--disable-background-timer-throttling',
-                        '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding',
-                        '--disable-web-security',
-                        '--disable-features=TranslateUI',
-                        '--disable-default-apps'
+                        '--single-process'
                     ]
-                };
-
-                // On Render, try to use the system Chrome or fallback to bundled
-                if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-                    // Try different Chrome paths for Render
-                    const possiblePaths = [
-                        '/usr/bin/google-chrome',
-                        '/usr/bin/google-chrome-stable',
-                        '/usr/bin/chromium-browser',
-                        '/usr/bin/chromium',
-                        process.env.PUPPETEER_EXECUTABLE_PATH
-                    ].filter(Boolean);
-
-                    for (const executablePath of possiblePaths) {
-                        try {
-                            console.log(`Trying Chrome at: ${executablePath}`);
-                            launchOptions.executablePath = executablePath;
-                            this.browser = await puppeteer.launch(launchOptions);
-                            console.log('✅ Browser launched successfully!');
-                            break;
-                        } catch (error) {
-                            console.log(`❌ Failed with ${executablePath}:`, error.message);
-                            continue;
-                        }
-                    }
-
-                    // If no system Chrome found, try without executablePath (use bundled)
-                    if (!this.browser) {
-                        console.log('Trying bundled Chromium...');
-                        delete launchOptions.executablePath;
-                        this.browser = await puppeteer.launch(launchOptions);
-                        console.log('✅ Bundled Chromium launched!');
-                    }
-                } else {
-                    // Local development
-                    this.browser = await puppeteer.launch(launchOptions);
-                    console.log('✅ Local browser launched!');
-                }
-
+                });
+            
+                console.log('✅ Bundled Chromium browser launched successfully!');
+            
             } catch (error) {
                 console.error('Browser initialization failed:', error);
                 throw new Error(`Failed to initialize browser: ${error.message}`);
