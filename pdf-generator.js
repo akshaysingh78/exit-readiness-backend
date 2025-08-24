@@ -1,4 +1,4 @@
-// PDF Generator using Puppeteer
+// PDF Generator using Puppeteer - Render Optimized
 // Converts HTML reports to professional PDFs
 
 const puppeteer = require('puppeteer');
@@ -10,21 +10,73 @@ class PDFGenerator {
         this.browser = null;
     }
 
-    // Initialize browser (reuse for multiple PDFs)
+    // Initialize browser with Render-compatible settings
     async init() {
         if (!this.browser) {
-            this.browser = await puppeteer.launch({
-                headless: 'new',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process'
-                ]
-            });
+            try {
+                console.log('Initializing Puppeteer browser...');
+                
+                const launchOptions = {
+                    headless: 'new',
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--single-process',
+                        '--disable-features=VizDisplayCompositor',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-renderer-backgrounding',
+                        '--disable-web-security',
+                        '--disable-features=TranslateUI',
+                        '--disable-default-apps'
+                    ]
+                };
+
+                // On Render, try to use the system Chrome or fallback to bundled
+                if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+                    // Try different Chrome paths for Render
+                    const possiblePaths = [
+                        '/usr/bin/google-chrome',
+                        '/usr/bin/google-chrome-stable',
+                        '/usr/bin/chromium-browser',
+                        '/usr/bin/chromium',
+                        process.env.PUPPETEER_EXECUTABLE_PATH
+                    ].filter(Boolean);
+
+                    for (const executablePath of possiblePaths) {
+                        try {
+                            console.log(`Trying Chrome at: ${executablePath}`);
+                            launchOptions.executablePath = executablePath;
+                            this.browser = await puppeteer.launch(launchOptions);
+                            console.log('✅ Browser launched successfully!');
+                            break;
+                        } catch (error) {
+                            console.log(`❌ Failed with ${executablePath}:`, error.message);
+                            continue;
+                        }
+                    }
+
+                    // If no system Chrome found, try without executablePath (use bundled)
+                    if (!this.browser) {
+                        console.log('Trying bundled Chromium...');
+                        delete launchOptions.executablePath;
+                        this.browser = await puppeteer.launch(launchOptions);
+                        console.log('✅ Bundled Chromium launched!');
+                    }
+                } else {
+                    // Local development
+                    this.browser = await puppeteer.launch(launchOptions);
+                    console.log('✅ Local browser launched!');
+                }
+
+            } catch (error) {
+                console.error('Browser initialization failed:', error);
+                throw new Error(`Failed to initialize browser: ${error.message}`);
+            }
         }
         return this.browser;
     }
@@ -58,9 +110,11 @@ class PDFGenerator {
             };
 
             // Generate PDF
+            console.log('Generating PDF with Puppeteer...');
             const pdfBuffer = await page.pdf(pdfOptions);
             await page.close();
-
+            
+            console.log('✅ PDF generated successfully!');
             return pdfBuffer;
 
         } catch (error) {
@@ -284,27 +338,27 @@ class PDFGenerator {
     <div class="score-grid no-break">
         <div class="score-card">
             <h3>Business Performance</h3>
-            <div class="score-number ${this.getScoreClass(scores.businessPerformance)}">${scores.businessPerformance}</div>
+            <div class="score-number ${this.getScoreClass(scores.sections?.business || 0)}">${scores.sections?.business || 0}</div>
             <div class="score-label">Financial Health</div>
         </div>
         <div class="score-card">
             <h3>Strategic Position</h3>
-            <div class="score-number ${this.getScoreClass(scores.strategicPosition)}">${scores.strategicPosition}</div>
+            <div class="score-number ${this.getScoreClass(scores.sections?.strategic || 0)}">${scores.sections?.strategic || 0}</div>
             <div class="score-label">Market Advantage</div>
         </div>
         <div class="score-card">
             <h3>Organizational</h3>
-            <div class="score-number ${this.getScoreClass(scores.organizationalReadiness)}">${scores.organizationalReadiness}</div>
+            <div class="score-number ${this.getScoreClass(scores.sections?.organizational || 0)}">${scores.sections?.organizational || 0}</div>
             <div class="score-label">Systems & People</div>
         </div>
         <div class="score-card">
             <h3>Owner Readiness</h3>
-            <div class="score-number ${this.getScoreClass(scores.ownerReadiness)}">${scores.ownerReadiness}</div>
+            <div class="score-number ${this.getScoreClass(scores.sections?.owner || 0)}">${scores.sections?.owner || 0}</div>
             <div class="score-label">Personal Preparation</div>
         </div>
         <div class="score-card">
             <h3>Transaction Ready</h3>
-            <div class="score-number ${this.getScoreClass(scores.transactionReadiness)}">${scores.transactionReadiness}</div>
+            <div class="score-number ${this.getScoreClass(scores.sections?.transaction || 0)}">${scores.sections?.transaction || 0}</div>
             <div class="score-label">Deal Preparation</div>
         </div>
     </div>
